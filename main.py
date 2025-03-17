@@ -20,11 +20,6 @@ def parse_data(file_name):
     return data
 
 
-def extract_block(data):
-
-    return data
-
-
 def data_process(data, data_type):
     res = {}
     for block in data["slot ID"].unique():
@@ -65,7 +60,8 @@ def plot_datasets(datasets):
 def main():
 
     data = parse_data(file_name)
-    data = extract_block(data)
+    data = data.loc[data["slot ID"] == data["slot ID"].value_counts().idxmax()]
+    data["batch"] = data["Shred ID"] // 64
     shreds = data.loc[data["type"] == "SHRED_RX"]
     print("Shreds are separated...")
     repair = data.loc[data["type"] == "REPAIR_RX"]
