@@ -1,12 +1,14 @@
 import pandas as pd
 import matplotlib.pyplot as plt
-
+#TODO: please make this a command-line arg. Preferably, read straight from gzip archive
 file_name = "turbine_log.txt"
 
+#TODO these should be CLI args too
 #slice range
 start_line = 0
 end_line = 100000
 
+#TODO: constants should be CAPITALIZED
 time_sample = 2500 # us is used as a time unit
 
 def parse_data(file_name):
@@ -20,15 +22,15 @@ def parse_data(file_name):
     return data
 
 
-def extract_block(data):
+def extract_block(data, block_idx:int)->dict:
     res = {}
-    block_df = data.loc[data["slot ID"] == data["slot ID"].value_counts().idxmax()]
-    fec_ids = list(set(block_df["FEC ID"] // 64))
+    block_df = data.loc[data["slot ID"]== block_idx]
+    fec_ids = list(set(block_df["FEC ID"]))
     #print(fec_ids)
     #print(f"fec_ids\n{fec_ids}")
-    block_df.loc[:, "FEC ID"] = (block_df["FEC ID"] // 64).astype(int)
+    block_df.loc[:, "FEC ID"] = block_df["FEC ID"]
     for id in fec_ids:
-        name = f"shred_{id}"
+        name = id
         res[name] = {}
         filtered = block_df.loc[block_df["FEC ID"] == id]
         #print(filtered, id)
@@ -44,10 +46,10 @@ def extract_block(data):
 
 def data_process(data, data_type):
     res = {}
-    for block in data["slot ID"].unique():
+    for block in data["slot number"].unique():
         name = " ".join([str(block),data_type])
         res[name] = {}
-        filtered = data.loc[data["slot ID"] == block]
+        filtered = data.loc[data["slot number"] == block]
         #print(f"filtered length:{len(filtered)}")
         total = 0
         for t in filtered["time_stamp"].unique():
@@ -61,55 +63,91 @@ def data_process(data, data_type):
 
 
 #Plot datasets with multiple blocks
-def plot_datasets(datasets):
-    plt.style.use("dark_background")
-    plt.figure(figsize=(12, 6))
+def plot_datasets(axes, datasets):
     colors = ["cyan", "red", "orange", "magenta", "blue", "yellow", "green"]
     for i, (slot_id, values) in enumerate(datasets.items()):
         times = sorted(values.keys())
         counts = [values[t] for t in times]
-        plt.plot(times, counts, linestyle="-",  # Removed 'marker="o"'
+        axes.plot(times, counts, linestyle="-",  # Removed 'marker="o"'
                  color=colors[i % len(colors)], label=f"Slot ID {slot_id}", alpha=0.8, linewidth=2)
 
-    plt.xlabel("Timestamp", fontsize=12, color="white")
+    axes.set_xlabel("Timestamp", fontsize=12, color="white")
+    #TODO finish conversion
     plt.ylabel("Count", fontsize=12, color="white")
     plt.xticks(rotation=45, color="white")
     plt.yticks(color="white")
     plt.grid(color="gray", linestyle="--", linewidth=0.5, alpha=0.5)
     plt.legend(loc="upper left", fontsize=10, framealpha=0.6)
-    plt.show()
 
 
-def plot_shreds(shreds_dict):
-    plt.style.use("dark_background")
-    plt.figure(figsize=(12, 6))
-
+def plot_shreds(ax, shreds_dict):
+    ax.clear()
+    #TODO: please use a colormap
     colors = ["cyan", "red", "orange", "magenta", "blue", "yellow", "green"]
 
-    for i, (slot_name, time_data) in enumerate(shreds_dict.items()):
+    for i, (fec_set_num, time_data) in enumerate(shreds_dict.items()):
         times = sorted(time_data.keys())  # Get timestamps in order
         counts = [time_data[t] for t in times]  # Get corresponding amounts
 
-        plt.plot(times, counts, color=colors[i % len(colors)], label=f"{slot_name}", alpha=0.8, linewidth=2)
+        ax.plot(times, counts, color=colors[i % len(colors)], alpha=0.8, linewidth=2)
 
-    plt.xlabel("Timestamp", fontsize=12, color="white")
-    plt.ylabel("Count", fontsize=12, color="white")
-    plt.xticks(rotation=45, color="white")
-    plt.yticks(color="white")
-    plt.grid(color="gray", linestyle="--", linewidth=0.5, alpha=0.5)
-    plt.legend(loc="upper left", fontsize=10, framealpha=0.6)
-    plt.show()
+        ax.annotate(f'FEC set {fec_set_num}', xy=(times[-1], counts[-1]), rotation=45, xytext=(times[-1], counts[-1]+5),
+                    arrowprops=dict(facecolor='white', shrink=0.5),
+                    )
+
+    ax.set_xlabel("Timestamp", fontsize=12, color="white")
+    ax.set_ylabel("Count", fontsize=12, color="white")
+    ax.set_ylim([0,80])
+    ax.tick_params(axis="x",rotation=45, color="white")
+    ax.tick_params(axis="y", color="white")
+    ax.grid(color="gray", linestyle="--", linewidth=0.5, alpha=0.5)
+    ax.legend(loc="upper left", fontsize=10, framealpha=0.6)
 
 
+class Cursor:
+    def __init__(self, data):
+        self.data=data
+        self.index = 0
 
+    def next(self):
+        if self.index < len(self.data)-1:
+            self.index += 1
+        return self.current()
+
+    def prev(self):
+        if self.index >= 1:
+            self.index -= 1
+        return self.current()
+
+    def current(self):
+        return self.data[self.index]
 
 def main():
-
     data = parse_data(file_name)
+    plt.style.use("dark_background")
+    fig, axes = plt.subplots(figsize=(12,6))
+
     #stamps = (data["time_stamp"].unique())
     #print(f"STAMPS:{stamps}")
-    shreds_set = extract_block(data)
-    plot_shreds(shreds_set)
+
+    block_cursor = Cursor( sorted(pd.unique(data["slot ID"])))
+    shreds_set = extract_block(data, block_cursor.current())
+    plot_shreds(axes, shreds_set)
+    def on_press(event):
+        if event.key == 'right':
+            block_cursor.next()
+        elif event.key == "left":
+            block_cursor.prev()
+        elif event.key == "escape":
+            exit()
+
+        shreds_set = extract_block(data, block_cursor.current())
+        plot_shreds(axes, shreds_set)
+        fig.suptitle(f"Block number {block_cursor.current()}")
+        fig.canvas.draw()
+
+    fig.canvas.mpl_connect('key_press_event', on_press)
+    plt.show()
     #shreds = data.loc[data["type"] == "SHRED_RX"]
     #stamps = (data["time_stamp"].unique())
     #print(f"STAMPS:{stamps}")
@@ -122,8 +160,9 @@ def main():
     #print("Dataset: repairs added")
     #plot_datasets(datasets)
 
-    
+
     return 0
 
 if __name__ == "__main__":
+
     main()
