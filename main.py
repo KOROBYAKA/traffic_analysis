@@ -21,7 +21,6 @@ def parse_data(file_name):
     data["time_stamp"] = data["time_stamp"].dt.round(f"{time_sample}us")
     return data
 
-
 def extract_block(data, block_idx:int)->dict:
     res = {}
     block_df = data.loc[data["slot ID"]== block_idx]
@@ -57,47 +56,28 @@ def data_process(data, data_type):
             total += len(filtered.loc[filtered["time_stamp"] == t])
             #print(f"TIMESTAMP::{t}::total={total}::filtered_length_byT:{len(filtered.loc[filtered["time_stamp"] == t])}")
             res[name][t] = total
-
-
     return res
-
-
-#Plot datasets with multiple blocks
-def plot_datasets(axes, datasets):
-    colors = ["cyan", "red", "orange", "magenta", "blue", "yellow", "green"]
-    for i, (slot_id, values) in enumerate(datasets.items()):
-        times = sorted(values.keys())
-        counts = [values[t] for t in times]
-        axes.plot(times, counts, linestyle="-",  # Removed 'marker="o"'
-                 color=colors[i % len(colors)], label=f"Slot ID {slot_id}", alpha=0.8, linewidth=2)
-
-    axes.set_xlabel("Timestamp", fontsize=12, color="white")
-    #TODO finish conversion
-    plt.ylabel("Count", fontsize=12, color="white")
-    plt.xticks(rotation=45, color="white")
-    plt.yticks(color="white")
-    plt.grid(color="gray", linestyle="--", linewidth=0.5, alpha=0.5)
-    plt.legend(loc="upper left", fontsize=10, framealpha=0.6)
-
 
 def plot_shreds(ax, shreds_dict):
     ax.clear()
     #TODO: please use a colormap
     colors = ["cyan", "red", "orange", "magenta", "blue", "yellow", "green"]
 
+    max_y = 0
     for i, (fec_set_num, time_data) in enumerate(shreds_dict.items()):
         times = sorted(time_data.keys())  # Get timestamps in order
         counts = [time_data[t] for t in times]  # Get corresponding amounts
 
         ax.plot(times, counts, color=colors[i % len(colors)], alpha=0.8, linewidth=2)
-
-        ax.annotate(f'FEC set {fec_set_num}', xy=(times[-1], counts[-1]), rotation=45, xytext=(times[-1], counts[-1]+5),
-                    arrowprops=dict(facecolor='white', shrink=0.5),
+        max_y = max(max_y, max(counts))
+        ax.annotate(f'{fec_set_num}', xy=(times[-1], counts[-1]),
+            rotation=90, xytext=(times[-1], counts[-1]+5),
+                    arrowprops=dict(facecolor='white', headwidth=2, headlength=3, width=1),
                     )
 
     ax.set_xlabel("Timestamp", fontsize=12, color="white")
     ax.set_ylabel("Count", fontsize=12, color="white")
-    ax.set_ylim([0,80])
+    ax.set_ylim([0,max_y + 10])
     ax.tick_params(axis="x",rotation=45, color="white")
     ax.tick_params(axis="y", color="white")
     ax.grid(color="gray", linestyle="--", linewidth=0.5, alpha=0.5)
