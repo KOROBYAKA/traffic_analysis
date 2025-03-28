@@ -1,24 +1,22 @@
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 #TODO: please make this a command-line arg. Preferably, read straight from gzip archive
 file_name = "turbine_log.txt"
-
 #TODO these should be CLI args too
 #slice range
-start_line = 0
-end_line = 100000
-
-#TODO: constants should be CAPITALIZED
-time_sample = 2500 # us is used as a time unit
+START_LINE = 0
+END_LINE = 100000
+TIME_SAMPLE = 2500 # us is used as a time unit
 
 def parse_data(file_name):
     columns = ["type", "slot ID", "Shred ID", "FEC ID", "time_stamp"]
-    data = pd.read_csv(file_name, skiprows=range(0, start_line), sep=":", names=columns,
+    data = pd.read_csv(file_name, skiprows=range(0, START_LINE), sep=":", names=columns,
                         dtype={"type": str, "slot ID": int, "Shred ID": int, "FEC ID":int, "time_stamp": str},
-                        nrows=end_line - start_line)
+                        nrows=END_LINE - START_LINE)
     data["time_stamp"] = pd.to_numeric(data["time_stamp"], errors="coerce")
     data["time_stamp"] = pd.to_datetime(data["time_stamp"], unit="us", utc=True, errors="coerce")
-    data["time_stamp"] = data["time_stamp"].dt.round(f"{time_sample}us")
+    data["time_stamp"] = data["time_stamp"].dt.round(f"{TIME_SAMPLE}us")
     return data
 
 def extract_block(data, block_idx:int)->dict:
@@ -60,15 +58,14 @@ def data_process(data, data_type):
 
 def plot_shreds(ax, shreds_dict):
     ax.clear()
-    #TODO: please use a colormap
-    colors = ["cyan", "red", "orange", "magenta", "blue", "yellow", "green"]
+    colors = mpl.color_sequences['Set1']
 
     max_y = 0
     for i, (fec_set_num, time_data) in enumerate(shreds_dict.items()):
         times = sorted(time_data.keys())  # Get timestamps in order
         counts = [time_data[t] for t in times]  # Get corresponding amounts
 
-        ax.plot(times, counts, color=colors[i % len(colors)], alpha=0.8, linewidth=2)
+        ax.plot(times, counts, color=colors[i % len(colors)], alpha=1, linewidth=2)
         max_y = max(max_y, max(counts))
         ax.annotate(f'{fec_set_num}', xy=(times[-1], counts[-1]),
             rotation=90, xytext=(times[-1], counts[-1]+5),
@@ -81,7 +78,6 @@ def plot_shreds(ax, shreds_dict):
     ax.tick_params(axis="x",rotation=45, color="white")
     ax.tick_params(axis="y", color="white")
     ax.grid(color="gray", linestyle="--", linewidth=0.5, alpha=0.5)
-    ax.legend(loc="upper left", fontsize=10, framealpha=0.6)
 
 
 class Cursor:
@@ -110,7 +106,7 @@ def main():
     #stamps = (data["time_stamp"].unique())
     #print(f"STAMPS:{stamps}")
 
-    block_cursor = Cursor( sorted(pd.unique(data["slot ID"])))
+    block_cursor = Cursor(sorted(pd.unique(data["slot ID"])))
     shreds_set = extract_block(data, block_cursor.current())
     plot_shreds(axes, shreds_set)
     def on_press(event):
