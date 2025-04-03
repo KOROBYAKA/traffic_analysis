@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 import argparse
 import numpy as np
+import matplotlib.dates as mdates
 
 def parse_data(file_name:str, time_sample:int, start:int, end:int):
     columns = ["type", "slot ID", "Shred ID", "FEC ID", "time_stamp"]
@@ -37,7 +38,7 @@ def extract_block(data, block_idx:int):
                 rcv_data[shred[3]][2].append(shred[1]) #RECEIVE METHOD (REPAIR/TURBINE)
         for shred in rcv_data.keys():
             if len(rcv_data[shred][1]) > 1:
-                duplicate[("|".join([str(shred),str([rcv_data[shred][2]])[3]]))] = [[rcv_data[shred][0]], [rcv_data[shred][1]]]
+                duplicate[("|".join([str(shred),str([rcv_data[shred][2]])[3]]))] = [rcv_data[shred][0], rcv_data[shred][1]]
 
     return res, duplicate
 
@@ -57,27 +58,24 @@ def data_process(data, data_type):
 def plot_shreds(ax, shreds_dict, duplicate):
     ax.clear()
     colors = mpl.color_sequences['Set1']
-    colors2 = mpl.color_sequences['Set1']
     max_y = 0
 
     for i, (fec_set_num, time_data) in enumerate(shreds_dict.items()):
         times = sorted(time_data.keys())  # Get timestamps in order
         counts = [time_data[t] for t in times]  # Get corresponding amounts
-        ax.plot(times, counts, color=colors[i % len(colors)], alpha=0.7, linewidth=2)
+        ax.plot(times, counts, color=colors[i % len(colors)], alpha=1, linewidth=2)
         max_y = max(max_y, max(counts))
         ax.annotate(f'{fec_set_num}', xy=(times[-1], counts[-1]),
             rotation=90, xytext=(times[-1], counts[-1]+5),
                     arrowprops=dict(facecolor='white', headwidth=2, headlength=3, width=1),)
 
-    for i,(name, (timestamps, totals)) in enumerate(duplicate.items()):
-        ax.plot(timestamps, totals, color='red', alpha=1, linewidth=2)
-        print(timestamps, totals)
-        last_x = timestamps[-1][-1] if isinstance(timestamps[-1], (list, np.ndarray)) else timestamps[-1]
-        last_y = totals[-1][-1] if isinstance(totals[-1], (list, np.ndarray)) else totals[-1]
-        xytext_x = last_x
-        xytext_y = last_y + 3
-        ax.annotate(f'{name}', xy=(last_x, last_y), xytext=(xytext_x, xytext_y),
-                    arrowprops=dict(facecolor='white', headwidth=2, headlength=3, width=1))
+    for i, (name,(timestamps, totals)) in enumerate(duplicate.items()):
+        ax.scatter(timestamps, totals, color='red', alpha=1, s=35)
+        for i in range(0,len(totals)):
+            t = timestamps[i]
+            total = totals[i]
+            ax.annotate(f'{name}', xy=(t, total), xytext=(t, total + 3), ha='center', fontsize=9,rotation=90,
+                        color='white', arrowprops=dict(facecolor='white', headwidth=2, headlength=3, width=1))
 
     ax.set_xlabel("Timestamp", fontsize=12, color="white")
     ax.set_ylabel("Count", fontsize=12, color="white")
