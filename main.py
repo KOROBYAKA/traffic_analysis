@@ -1,44 +1,45 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib as mpl
-#TODO: please make this a command-line arg. Preferably, read straight from gzip archive
-file_name = "turbine_log.txt"
-#TODO these should be CLI args too
-#slice range
-START_LINE = 0
-END_LINE = 100000
-TIME_SAMPLE = 2500 # us is used as a time unit
+import argparse
+import numpy as np
 
-def parse_data(file_name):
+def parse_data(file_name:str, time_sample:int, start:int, end:int):
     columns = ["type", "slot ID", "Shred ID", "FEC ID", "time_stamp"]
-    data = pd.read_csv(file_name, skiprows=range(0, START_LINE), sep=":", names=columns,
+    data = pd.read_csv(file_name, skiprows=range(0, start), sep=":", names=columns,
                         dtype={"type": str, "slot ID": int, "Shred ID": int, "FEC ID":int, "time_stamp": str},
-                        nrows=END_LINE - START_LINE)
+                        nrows=end - start)
     data["time_stamp"] = pd.to_numeric(data["time_stamp"], errors="coerce")
     data["time_stamp"] = pd.to_datetime(data["time_stamp"], unit="us", utc=True, errors="coerce")
-    data["time_stamp"] = data["time_stamp"].dt.round(f"{TIME_SAMPLE}us")
+    data["time_stamp"] = data["time_stamp"].dt.round(f"{time_sample}us")
     return data
 
-def extract_block(data, block_idx:int)->dict:
+def extract_block(data, block_idx:int):
     res = {}
-    block_df = data.loc[data["slot ID"]== block_idx]
+    duplicate = {}
+    block_df = data.loc[data["slot ID"] == block_idx]
     fec_ids = list(set(block_df["FEC ID"]))
-    #print(fec_ids)
-    #print(f"fec_ids\n{fec_ids}")
     block_df.loc[:, "FEC ID"] = block_df["FEC ID"]
     for id in fec_ids:
+        rcv_data = {}
         name = id
         res[name] = {}
         filtered = block_df.loc[block_df["FEC ID"] == id]
-        #print(filtered, id)
-        #print("NAME::",name,":::filtered[time_stamp].unique():::", len(filtered["time_stamp"].unique()))
         total = 0
         for t in filtered["time_stamp"].unique():
             total += len(filtered.loc[block_df["time_stamp"] == t])
             res[name][t] = total
-            #print(f"TIMESTAMP::{t}::total={total}::filtered_length_byT:{len(filtered.loc[filtered["time_stamp"] == t])}:::FEC_ID:{id}")
+            for shred in filtered.loc[block_df["time_stamp"] == t].itertuples():
+                if shred[3] not in rcv_data:
+                    rcv_data[shred[3]] = [[],[],[]]
+                rcv_data[shred[3]][0].append(shred[5]) #TIMESTAMP
+                rcv_data[shred[3]][1].append(total) #CURRENT TOTAL
+                rcv_data[shred[3]][2].append(shred[1]) #RECEIVE METHOD (REPAIR/TURBINE)
+        for shred in rcv_data.keys():
+            if len(rcv_data[shred][1]) > 1:
+                duplicate[("|".join([str(shred),str([rcv_data[shred][2]])[3]]))] = [[rcv_data[shred][0]], [rcv_data[shred][1]]]
 
-    return res
+    return res, duplicate
 
 
 def data_process(data, data_type):
@@ -47,30 +48,36 @@ def data_process(data, data_type):
         name = " ".join([str(block),data_type])
         res[name] = {}
         filtered = data.loc[data["slot number"] == block]
-        #print(f"filtered length:{len(filtered)}")
         total = 0
         for t in filtered["time_stamp"].unique():
-            #print(filtered.loc[filtered["time_stamp"] == t])
             total += len(filtered.loc[filtered["time_stamp"] == t])
-            #print(f"TIMESTAMP::{t}::total={total}::filtered_length_byT:{len(filtered.loc[filtered["time_stamp"] == t])}")
             res[name][t] = total
     return res
 
-def plot_shreds(ax, shreds_dict):
+def plot_shreds(ax, shreds_dict, duplicate):
     ax.clear()
     colors = mpl.color_sequences['Set1']
-
+    colors2 = mpl.color_sequences['Set1']
     max_y = 0
+
     for i, (fec_set_num, time_data) in enumerate(shreds_dict.items()):
         times = sorted(time_data.keys())  # Get timestamps in order
         counts = [time_data[t] for t in times]  # Get corresponding amounts
-
-        ax.plot(times, counts, color=colors[i % len(colors)], alpha=1, linewidth=2)
+        ax.plot(times, counts, color=colors[i % len(colors)], alpha=0.7, linewidth=2)
         max_y = max(max_y, max(counts))
         ax.annotate(f'{fec_set_num}', xy=(times[-1], counts[-1]),
             rotation=90, xytext=(times[-1], counts[-1]+5),
-                    arrowprops=dict(facecolor='white', headwidth=2, headlength=3, width=1),
-                    )
+                    arrowprops=dict(facecolor='white', headwidth=2, headlength=3, width=1),)
+
+    for i,(name, (timestamps, totals)) in enumerate(duplicate.items()):
+        ax.plot(timestamps, totals, color='red', alpha=1, linewidth=2)
+        print(timestamps, totals)
+        last_x = timestamps[-1][-1] if isinstance(timestamps[-1], (list, np.ndarray)) else timestamps[-1]
+        last_y = totals[-1][-1] if isinstance(totals[-1], (list, np.ndarray)) else totals[-1]
+        xytext_x = last_x
+        xytext_y = last_y + 3
+        ax.annotate(f'{name}', xy=(last_x, last_y), xytext=(xytext_x, xytext_y),
+                    arrowprops=dict(facecolor='white', headwidth=2, headlength=3, width=1))
 
     ax.set_xlabel("Timestamp", fontsize=12, color="white")
     ax.set_ylabel("Count", fontsize=12, color="white")
@@ -99,7 +106,13 @@ class Cursor:
         return self.data[self.index]
 
 def main():
-    data = parse_data(file_name)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("path", help = "data file path", type=str)
+    parser.add_argument("time_sample", help = "time sample in microseconds", type=int)
+    parser.add_argument("start_line", help = "first line that script reads", type=int)
+    parser.add_argument("end_line", help = "last line that script reads", type=int)
+    args = parser.parse_args()
+    data = parse_data(args.path, args.time_sample, args.start_line, args.end_line)
     plt.style.use("dark_background")
     fig, axes = plt.subplots(figsize=(12,6))
 
@@ -107,8 +120,8 @@ def main():
     #print(f"STAMPS:{stamps}")
 
     block_cursor = Cursor(sorted(pd.unique(data["slot ID"])))
-    shreds_set = extract_block(data, block_cursor.current())
-    plot_shreds(axes, shreds_set)
+    shreds_set, duplicate = extract_block(data, block_cursor.current())
+    plot_shreds(axes, shreds_set, duplicate)
     def on_press(event):
         if event.key == 'right':
             block_cursor.next()
@@ -117,8 +130,8 @@ def main():
         elif event.key == "escape":
             exit()
 
-        shreds_set = extract_block(data, block_cursor.current())
-        plot_shreds(axes, shreds_set)
+        shreds_set, duplicate = extract_block(data, block_cursor.current())
+        plot_shreds(axes, shreds_set, duplicate)
         fig.suptitle(f"Block number {block_cursor.current()}")
         fig.canvas.draw()
 
@@ -135,10 +148,7 @@ def main():
     #datasets.update(data_process(repair, "repair"))
     #print("Dataset: repairs added")
     #plot_datasets(datasets)
-
-
     return 0
 
 if __name__ == "__main__":
-
     main()
