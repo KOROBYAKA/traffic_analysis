@@ -6,9 +6,10 @@ import numpy as np
 import matplotlib.dates as mdates
 
 def parse_data(file_name:str, time_sample:int, start:int, end:int):
-    columns = ["type", "slot ID", "Shred ID", "FEC ID", "time_stamp"]
+    columns = ["type", "slot ID", "Shred ID", "FEC ID", "FEC set size", "time_stamp"]
+    start = max(start, 1) # skip header
     data = pd.read_csv(file_name, skiprows=range(0, start), sep=":", names=columns,
-                        dtype={"type": str, "slot ID": int, "Shred ID": int, "FEC ID":int, "time_stamp": str},
+                        dtype={"type": str, "slot ID": int, "Shred ID": int, "FEC ID":int, "FEC set size":int, "time_stamp": str},
                         nrows=end - start)
     data["time_stamp"] = pd.to_numeric(data["time_stamp"], errors="coerce")
     data["time_stamp"] = pd.to_datetime(data["time_stamp"], unit="us", utc=True, errors="coerce")
@@ -33,7 +34,7 @@ def extract_block(data, block_idx:int):
             for shred in filtered.loc[block_df["time_stamp"] == t].itertuples():
                 if shred[3] not in rcv_data:
                     rcv_data[shred[3]] = [[],[],[]]
-                rcv_data[shred[3]][0].append(shred[5]) #TIMESTAMP
+                rcv_data[shred[3]][0].append(shred[6]) #TIMESTAMP
                 rcv_data[shred[3]][1].append(total) #CURRENT TOTAL
                 rcv_data[shred[3]][2].append(shred[1]) #RECEIVE METHOD (REPAIR/TURBINE)
         for shred in rcv_data.keys():
@@ -106,9 +107,9 @@ class Cursor:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("path", help = "data file path", type=str)
-    parser.add_argument("time_sample", help = "time sample in microseconds", type=int)
-    parser.add_argument("start_line", help = "first line that script reads", type=int)
     parser.add_argument("end_line", help = "last line that script reads", type=int)
+    parser.add_argument("--start_line", help = "first line that script reads", type=int, default=0)
+    parser.add_argument("--time_sample", help = "time sample in microseconds", type=int, default = 10000)
     args = parser.parse_args()
     data = parse_data(args.path, args.time_sample, args.start_line, args.end_line)
     plt.style.use("dark_background")
