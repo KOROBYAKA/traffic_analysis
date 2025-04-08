@@ -2,8 +2,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import argparse
-import numpy as np
-import matplotlib.dates as mdates
 
 def parse_data(file_name:str, time_sample:int, start:int, end:int):
     columns = ["type", "slot ID", "Shred ID", "FEC ID", "FEC set size", "time_stamp"]
@@ -24,19 +22,29 @@ def extract_block(data, block_idx:int):
     block_df.loc[:, "FEC ID"] = block_df["FEC ID"]
     for id in fec_ids:
         rcv_data = {}
+        rcv_shreds = set({})
         name = id
         res[name] = {}
         filtered = block_df.loc[block_df["FEC ID"] == id]
         total = 0
         for t in filtered["time_stamp"].unique():
-            total += len(filtered.loc[block_df["time_stamp"] == t])
+            duplicates = 0
+            for shred in filtered.loc[block_df["time_stamp"] == t].itertuples():
+                if shred[3] not in rcv_shreds:
+                    rcv_shreds.add(shred[3])
+                else:
+                    duplicates += 1
+
+            total += (len(filtered.loc[block_df["time_stamp"] == t]) - duplicates)
             res[name][t] = total
             for shred in filtered.loc[block_df["time_stamp"] == t].itertuples():
-                if shred[3] not in rcv_data:
+                if shred[3] not in rcv_data.keys():
                     rcv_data[shred[3]] = [[],[],[]]
                 rcv_data[shred[3]][0].append(shred[6]) #TIMESTAMP
                 rcv_data[shred[3]][1].append(total) #CURRENT TOTAL
                 rcv_data[shred[3]][2].append(shred[1]) #RECEIVE METHOD (REPAIR/TURBINE)
+
+
         for shred in rcv_data.keys():
             if len(rcv_data[shred][1]) > 1:
                 duplicate[("|".join([str(shred),str([rcv_data[shred][2]])[3]]))] = [rcv_data[shred][0], rcv_data[shred][1]]
