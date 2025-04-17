@@ -14,15 +14,27 @@ def parse_data(file_name:str, time_sample:int, start:int, end:int):
     data["time_stamp"] = data["time_stamp"].dt.round(f"{time_sample}us")
     return data
 
+def when_batch_done(data, block_idx:int):
+    batches = []
+    time_stamps = []
+    block_df = data.loc[data["slot ID"] == block_idx]
+    for id in set(block_df["FEC ID"]):
+        batch = block_df.loc[block_df["FEC ID"] == id].tolist()
+        shred = batch(round(len(batch)/2))
+        batches.append(shred[3])
+        time_stamps.append(shred[-1])
+
+    return [batches, time_stamps]
+
+
+
 def extract_block(data, block_idx:int):
     res = {}
     duplicate = {}
     block_df = data.loc[data["slot ID"] == block_idx]
     fec_ids = list(set(block_df["FEC ID"]))
-    block_df.loc[:, "FEC ID"] = block_df["FEC ID"]
     for id in fec_ids:
         rcv_data = {}
-        rcv_shreds = set({})
         name = id
         res[name] = {}
         filtered = block_df.loc[block_df["FEC ID"] == id]
@@ -30,20 +42,18 @@ def extract_block(data, block_idx:int):
         for t in filtered["time_stamp"].unique():
             duplicates = 0
             for shred in filtered.loc[block_df["time_stamp"] == t].itertuples():
-                if shred[3] not in rcv_shreds:
-                    rcv_shreds.add(shred[3])
-                else:
+                if shred[3] in rcv_data.keys():
                     duplicates += 1
 
             total += (len(filtered.loc[block_df["time_stamp"] == t]) - duplicates)
             res[name][t] = total
+
             for shred in filtered.loc[block_df["time_stamp"] == t].itertuples():
                 if shred[3] not in rcv_data.keys():
                     rcv_data[shred[3]] = [[],[],[]]
                 rcv_data[shred[3]][0].append(shred[6]) #TIMESTAMP
                 rcv_data[shred[3]][1].append(total) #CURRENT TOTAL
                 rcv_data[shred[3]][2].append(shred[1]) #RECEIVE METHOD (REPAIR/TURBINE)
-
 
         for shred in rcv_data.keys():
             if len(rcv_data[shred][1]) > 1:
