@@ -17,26 +17,37 @@ def parse_data(file_name:str, time_sample:int, start:int, end:int):
 def when_batch_done(data, block_idx:int):
     batches = []
     time_stamps = []
-    block_df = data.loc[data["slot ID"] == block_idx]
+    block_df = data.query(f"`slot ID` == {str(block_idx)}")
+    sizes = block_df.query(f"`FEC set size` != 0")
+    print("SIZES",pd.DataFrame(sizes))
     for id in set(block_df["FEC ID"]):
-        batch = block_df.loc[block_df["FEC ID"] == id].tolist()
+        print("block_df.loc[block_df[FEC ID] == id]",block_df.loc[block_df["FEC ID"] == id, "time_stamp"])
+        batch = block_df.loc[block_df["FEC ID"] == id, "time_stamp"]
         shred = batch(round(len(batch)/2))
         batches.append(shred[3])
         time_stamps.append(shred[-1])
 
-    return [batches, time_stamps]
+    return batches, time_stamps
 
+def ready_indicator(batches, time_stamps, shreds_set):
+    indicators = {}
+    for x in range(0,len(batches)):
+        batch = batches[x]
+        time_stamp = time_stamps[x]
+        indicators[time_stamps] = shreds_set[batch][time_stamp]
+        print(indicators[time_stamps])
+    return indicators
 
 
 def extract_block(data, block_idx:int):
     res = {}
     duplicate = {}
     block_df = data.loc[data["slot ID"] == block_idx]
+    #print(pd.DataFrame(block_df))
     fec_ids = list(set(block_df["FEC ID"]))
     for id in fec_ids:
         rcv_data = {}
-        name = id
-        res[name] = {}
+        res[id] = {}
         filtered = block_df.loc[block_df["FEC ID"] == id]
         total = 0
         for t in filtered["time_stamp"].unique():
@@ -46,7 +57,7 @@ def extract_block(data, block_idx:int):
                     duplicates += 1
 
             total += (len(filtered.loc[block_df["time_stamp"] == t]) - duplicates)
-            res[name][t] = total
+            res[id][t] = total
 
             for shred in filtered.loc[block_df["time_stamp"] == t].itertuples():
                 if shred[3] not in rcv_data.keys():
@@ -74,7 +85,7 @@ def data_process(data, data_type):
             res[name][t] = total
     return res
 
-def plot_shreds(ax, shreds_dict, duplicate):
+def plot_shreds(ax, shreds_dict, duplicate, ready_indicators):
     ax.clear()
     colors = mpl.color_sequences['Set1']
     max_y = 0
@@ -90,11 +101,9 @@ def plot_shreds(ax, shreds_dict, duplicate):
 
     for i, (name,(timestamps, totals)) in enumerate(duplicate.items()):
         ax.scatter(timestamps, totals, color='red', alpha=1, s=35)
-        for i in range(0,len(totals)):
-            t = timestamps[i]
-            total = totals[i]
-            ax.annotate(f'{name}', xy=(t, total), xytext=(t, total + 3), ha='center', fontsize=9,rotation=90,
-                        color='white', arrowprops=dict(facecolor='white', headwidth=2, headlength=3, width=1))
+
+
+    ax.scatter(ready_indicators.keys(), ready_indicators.values(), color='hotpink', alpha=1, s=35)
 
     ax.set_xlabel("Timestamp", fontsize=12, color="white")
     ax.set_ylabel("Count", fontsize=12, color="white")
@@ -137,8 +146,11 @@ def main():
     #print(f"STAMPS:{stamps}")
 
     block_cursor = Cursor(sorted(pd.unique(data["slot ID"])))
+    print("SLOT ID's",pd.unique(data["slot ID"]))
     shreds_set, duplicate = extract_block(data, block_cursor.current())
-    plot_shreds(axes, shreds_set, duplicate)
+    batches, time_stamps = when_batch_done(data, block_cursor.current())
+    ready_indicators = ready_indicator(batches, time_stamps, shreds_set)
+    plot_shreds(axes, shreds_set, duplicate, ready_indicators)
     def on_press(event):
         if event.key == 'right':
             block_cursor.next()
@@ -148,7 +160,9 @@ def main():
             exit()
 
         shreds_set, duplicate = extract_block(data, block_cursor.current())
-        plot_shreds(axes, shreds_set, duplicate)
+        batches, time_stamps = when_batch_done(data, block_cursor.current())
+        ready_indicators = ready_indicator(batches, time_stamps, shreds_set)
+        plot_shreds(axes, shreds_set, duplicate, ready_indicators)
         fig.suptitle(f"Block number {block_cursor.current()}")
         fig.canvas.draw()
 
