@@ -18,12 +18,14 @@ def when_batch_done(data, block_idx:int):
     batches = []
     time_stamps = []
     block_df = data.query(f"`slot ID` == {str(block_idx)}")
-    sizes = block_df.query(f"`FEC set size` != 0")
-    print("SIZES",pd.DataFrame(sizes))
+    size = block_df.query("`FEC set size` != 0").items()
+    #size =
+    #if not size.empty:
+    print("SIZES",type(size),size)
     for id in set(block_df["FEC ID"]):
         print("block_df.loc[block_df[FEC ID] == id]",block_df.loc[block_df["FEC ID"] == id, "time_stamp"])
         batch = block_df.loc[block_df["FEC ID"] == id, "time_stamp"]
-        shred = batch(round(len(batch)/2))
+        shred = batch[round(len(batch)/2)]
         batches.append(shred[3])
         time_stamps.append(shred[-1])
 
@@ -116,7 +118,7 @@ def plot_shreds(ax, shreds_dict, duplicate, ready_indicators):
 class Cursor:
     def __init__(self, data):
         self.data=data
-        self.index = 0
+        self.index = 1
 
     def next(self):
         if self.index < len(self.data)-1:
