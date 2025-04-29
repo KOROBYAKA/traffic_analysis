@@ -1,7 +1,9 @@
 import pandas as pd
-import matplotlib.pyplot as plt
 import matplotlib as mpl
+import matplotlib.pyplot as plt
 import argparse
+
+
 
 def parse_data(file_name:str, time_sample:int, start:int, end:int):
     columns = ["type", "slot ID", "Shred ID", "FEC ID", "FEC set size", "time_stamp"]
@@ -15,27 +17,27 @@ def parse_data(file_name:str, time_sample:int, start:int, end:int):
     return data
 
 def when_batch_done(data, block_idx:int):
-    batches = []
-    time_stamps = []
     block_df = data.query(f"`slot ID` == {str(block_idx)}")
-    sizes = block_df.query(f"`FEC set size` != 0")
-    print("SIZES",pd.DataFrame(sizes))
-    for id in set(block_df["FEC ID"]):
-        print("block_df.loc[block_df[FEC ID] == id]",block_df.loc[block_df["FEC ID"] == id, "time_stamp"])
-        batch = block_df.loc[block_df["FEC ID"] == id, "time_stamp"]
-        shred = batch(round(len(batch)/2))
-        batches.append(shred[3])
-        time_stamps.append(shred[-1])
+    dct = {}
+    try:
+        batch_sizes = {}
+        for tpl in block_df.query("`FEC set size` != 0").itertuples():
+            batch_sizes[tpl[4]] = tpl[5]
 
-    return batches, time_stamps
+        for id in batch_sizes.keys():
+            required_shred_id = round(batch_sizes[id]/2)
+            batch = block_df[block_df["FEC ID"] == id]
+            required_shred = batch.iloc[required_shred_id]
+            dct[required_shred["FEC ID"]] = required_shred["time_stamp"]
 
-def ready_indicator(batches, time_stamps, shreds_set):
+    finally:
+        return dct
+
+def ready_indicator(dct, shreds_set):
     indicators = {}
-    for x in range(0,len(batches)):
-        batch = batches[x]
-        time_stamp = time_stamps[x]
-        indicators[time_stamps] = shreds_set[batch][time_stamp]
-        print(indicators[time_stamps])
+    for id, time_stamp in dct.items():
+        indicators[time_stamp] = shreds_set[id][time_stamp]
+        print("INDICATORS[TIME_STAMP]:",indicators[time_stamp])
     return indicators
 
 
@@ -103,7 +105,7 @@ def plot_shreds(ax, shreds_dict, duplicate, ready_indicators):
         ax.scatter(timestamps, totals, color='red', alpha=1, s=35)
 
 
-    ax.scatter(ready_indicators.keys(), ready_indicators.values(), color='hotpink', alpha=1, s=35)
+    ax.scatter(ready_indicators.keys(), ready_indicators.values(), color='green', alpha=1, s=80, marker='X')
 
     ax.set_xlabel("Timestamp", fontsize=12, color="white")
     ax.set_ylabel("Count", fontsize=12, color="white")
@@ -148,8 +150,8 @@ def main():
     block_cursor = Cursor(sorted(pd.unique(data["slot ID"])))
     print("SLOT ID's",pd.unique(data["slot ID"]))
     shreds_set, duplicate = extract_block(data, block_cursor.current())
-    batches, time_stamps = when_batch_done(data, block_cursor.current())
-    ready_indicators = ready_indicator(batches, time_stamps, shreds_set)
+    done_batches = when_batch_done(data, block_cursor.current())
+    ready_indicators = ready_indicator(done_batches, shreds_set)
     plot_shreds(axes, shreds_set, duplicate, ready_indicators)
     def on_press(event):
         if event.key == 'right':
@@ -160,8 +162,8 @@ def main():
             exit()
 
         shreds_set, duplicate = extract_block(data, block_cursor.current())
-        batches, time_stamps = when_batch_done(data, block_cursor.current())
-        ready_indicators = ready_indicator(batches, time_stamps, shreds_set)
+        done_batches = when_batch_done(data, block_cursor.current())
+        ready_indicators = ready_indicator(done_batches, shreds_set)
         plot_shreds(axes, shreds_set, duplicate, ready_indicators)
         fig.suptitle(f"Block number {block_cursor.current()}")
         fig.canvas.draw()
