@@ -3,6 +3,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import argparse
 
+from pandas.core.interchange.dataframe_protocol import DataFrame
 
 
 def parse_data(file_name:str, time_sample:int, start:int, end:int):
@@ -27,8 +28,7 @@ def when_batch_done(data, block_idx:int):
         for id in batch_sizes.keys():
             first_shreds = {}
             uni = []
-            print()
-            print("FILTER_DF_LEN:::",len(block_df[block_df["FEC ID"] == id]))
+            #print(pd.DataFrame(block_df[block_df["FEC ID"] == id]))
             print(f"ID:::{id} SIZE:::{batch_sizes[id]}")
 
             for shred in block_df[block_df["FEC ID"] == id].itertuples():
@@ -48,6 +48,9 @@ def when_batch_done(data, block_idx:int):
             #else:
                 #print("not fully assembled batch +1")
             if id in dct.keys(): print(f"dct[id] = time_stamps[required_shred_id]:::{dct[id],time_stamps[required_shred_id]}")
+    except:
+        print("Some error happened...")
+
 
     finally:
         return dct
