@@ -2,15 +2,14 @@ import pandas as pd
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import argparse
-
+import math
 
 
 def parse_data(file_name:str, time_sample:int, start:int, end:int):
-    columns = ["type", "slot ID", "Shred ID", "FEC ID", "FEC set size", "time_stamp"]
+    columns = ["type", "slot ID", "Shred ID", "FEC ID", "FEC data shreds", "FEC set size", "time_stamp"]
     start = max(start, 1) # skip header
     data = pd.read_csv(file_name, skiprows=range(0, start), sep=":", names=columns,
-                        dtype={"type": str, "slot ID": int, "Shred ID": int, "FEC ID":int, "FEC set size":int, "time_stamp": str},
-                        nrows=end - start)
+                        dtype={"type": str, "slot ID": int, "Shred ID": int, "FEC ID":int, "FEC data shreds":int, "FEC set size":int, "time_stamp": str}, nrows=end - start)
     data["time_stamp"] = pd.to_numeric(data["time_stamp"], errors="coerce")
     data["time_stamp"] = pd.to_datetime(data["time_stamp"], unit="us", utc=True, errors="coerce")
     data["time_stamp"] = data["time_stamp"].dt.round(f"{time_sample}us")
@@ -21,14 +20,26 @@ def when_batch_done(data, block_idx:int):
     dct = {}
     try:
         batch_sizes = {}
-        for tpl in block_df.query("`FEC set size` != 0").itertuples():
-            batch_sizes[tpl[4]] = tpl[5]
+        for tpl in block_df.query("`FEC data shreds` != 0").itertuples():
+            batch_sizes[tpl[4]] = tpl[6]
 
         for id in batch_sizes.keys():
+            first_shreds = {}
+            uni = []
+
+            for shred in block_df[block_df["FEC ID"] == id].itertuples():
+                shred_id = shred[3]
+                uni.append(shred_id)
+                if shred_id not in first_shreds.keys():
+                    first_shreds[shred_id] = shred[7]
+
             required_shred_id = round(batch_sizes[id]/2)
-            batch = block_df[block_df["FEC ID"] == id]
-            required_shred = batch.iloc[required_shred_id]
-            dct[required_shred["FEC ID"]] = required_shred["time_stamp"]
+            time_stamps = list(first_shreds.values())
+            if len(time_stamps) >= required_shred_id:
+                dct[id] = time_stamps[required_shred_id]
+    except:
+        print("Some error happened...")
+
 
     finally:
         return dct
@@ -37,7 +48,6 @@ def ready_indicator(dct, shreds_set):
     indicators = {}
     for id, time_stamp in dct.items():
         indicators[time_stamp] = shreds_set[id][time_stamp]
-        print("INDICATORS[TIME_STAMP]:",indicators[time_stamp])
     return indicators
 
 
@@ -64,7 +74,7 @@ def extract_block(data, block_idx:int):
             for shred in filtered.loc[block_df["time_stamp"] == t].itertuples():
                 if shred[3] not in rcv_data.keys():
                     rcv_data[shred[3]] = [[],[],[]]
-                rcv_data[shred[3]][0].append(shred[6]) #TIMESTAMP
+                rcv_data[shred[3]][0].append(shred[7]) #TIMESTAMP
                 rcv_data[shred[3]][1].append(total) #CURRENT TOTAL
                 rcv_data[shred[3]][2].append(shred[1]) #RECEIVE METHOD (REPAIR/TURBINE)
 
@@ -138,7 +148,7 @@ def main():
     parser.add_argument("path", help = "data file path", type=str)
     parser.add_argument("end_line", help = "last line that script reads", type=int)
     parser.add_argument("--start_line", help = "first line that script reads", type=int, default=0)
-    parser.add_argument("--time_sample", help = "time sample in microseconds", type=int, default = 10000)
+    parser.add_argument("--time_sample", help = "time sample in microseconds", type=int, default = int(1000*math.sqrt(2)))
     args = parser.parse_args()
     data = parse_data(args.path, args.time_sample, args.start_line, args.end_line)
     plt.style.use("dark_background")
