@@ -107,15 +107,16 @@ def plot_shreds(ax, shreds_dict, duplicate, ready_indicators):
         counts = [time_data[t] for t in times]  # Get corresponding amounts
         ax.plot(times, counts, color=colors[i % len(colors)], alpha=1, linewidth=2)
         max_y = max(max_y, max(counts))
-        ax.annotate(f'{fec_set_num}', xy=(times[-1], counts[-1]),
+        shred = ax.annotate(f'{fec_set_num}', xy=(times[-1], counts[-1]),
             rotation=90, xytext=(times[-1], counts[-1]+5),
                     arrowprops=dict(facecolor='white', headwidth=2, headlength=3, width=1),)
 
     for i, (name,(timestamps, totals)) in enumerate(duplicate.items()):
-        ax.scatter(timestamps, totals, color='red', alpha=1, s=35)
+        duplicates = ax.scatter(timestamps, totals, color='red', alpha=1, s=35, label = "Duplicate")
 
 
-    ax.scatter(ready_indicators.keys(), ready_indicators.values(), color='green', alpha=1, s=80, marker='X')
+
+    shred_done = ax.scatter(ready_indicators.keys(), ready_indicators.values(), color='green', alpha=1, s=80, marker='X', label = "Shred-is-done mark")
 
     ax.set_xlabel("Timestamp", fontsize=12, color="white")
     ax.set_ylabel("Count", fontsize=12, color="white")
@@ -123,6 +124,7 @@ def plot_shreds(ax, shreds_dict, duplicate, ready_indicators):
     ax.tick_params(axis="x",rotation=45, color="white")
     ax.tick_params(axis="y", color="white")
     ax.grid(color="gray", linestyle="--", linewidth=0.5, alpha=0.5)
+    ax.legend(handles=[shred_done,duplicates])
 
 
 class Cursor:
