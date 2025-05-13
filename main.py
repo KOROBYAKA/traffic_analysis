@@ -150,7 +150,7 @@ def main():
     parser.add_argument("path", help = "data file path", type=str)
     parser.add_argument("end_line", help = "last line that script reads", type=int)
     parser.add_argument("--start_line", help = "first line that script reads", type=int, default=0)
-    parser.add_argument("--time_sample", help = "time sample in microseconds", type=int, default = int(1000*math.sqrt(2)))
+    parser.add_argument("--time_sample", help = "time sample in microseconds", type=int, default = int(1000))
     args = parser.parse_args()
     data = parse_data(args.path, args.time_sample, args.start_line, args.end_line)
     plt.style.use("dark_background")
