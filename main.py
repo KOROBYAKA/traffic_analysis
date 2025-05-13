@@ -35,12 +35,12 @@ def when_batch_done(data, block_idx:int):
 
             required_shred_id = round(batch_sizes[id]/2)
             time_stamps = list(first_shreds.values())
+            endline = f"#ASSEMBLED SHRED#\n" if len(time_stamps) >= required_shred_id else "\n"
+            print(f"Batch ID:{id:<4}    Batch size:{batch_sizes[id]:<4}   Required shred amount:{required_shred_id:<4}   Unique shreds received:{(len(time_stamps)):<3}   Total shreds received:{len(uni):<5}", end=endline)
             if len(time_stamps) >= required_shred_id:
                 dct[id] = time_stamps[required_shred_id]
     except:
         print("Some error happened...")
-
-
     finally:
         return dct
 
