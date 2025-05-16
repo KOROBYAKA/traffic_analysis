@@ -61,40 +61,40 @@ def ready_indicator(dct, shreds_set):
 #Get a specific block by block's ID
 #Return dict duplicates {DUPLICATE_ID:[TIME_STAMPS][TOTALS]}
 #Return dict res {{FEC_SET_ID:{TIME_STAMP:TOTAL}}
-def extract_block(data, block_idx:int):
-    res = {}
+def extract_block(data, block_df):
+    shreds = {}
     duplicate = {}
-    block_df = data.loc[data["slot ID"] == block_idx]
     #print(pd.DataFrame(block_df))
-    fec_ids = list(set(block_df["FEC ID"]))
-    for id in fec_ids:
-        rcv_data = {}
-        res[id] = {}
+
+    for id in block_df["FEC ID"].unique(): #Starting to traverse a FEC Sets
+        rcv_data = {} #global storage for all shreds in batch
+        shreds[id] = {}
         filtered = block_df.loc[block_df["FEC ID"] == id]
         total = 0
 
+        #Starting to traverse a FEC Set
         for t in filtered["time_stamp"].unique():
             duplicates = 0
             for shred in filtered.loc[block_df["time_stamp"] == t].itertuples():
                 if shred[3] in rcv_data.keys():
                     duplicates += 1
-                #
+                #Calculating amount of duplicates for certain time stamp
 
             total += (len(filtered.loc[block_df["time_stamp"] == t]) - duplicates)
-            res[id][t] = total
-
+            shreds[id][t] = total
             for shred in filtered.loc[block_df["time_stamp"] == t].itertuples():
                 if shred[3] not in rcv_data.keys():
                     rcv_data[shred[3]] = [[],[],[]]
                 rcv_data[shred[3]][0].append(shred[7]) #TIMESTAMP
                 rcv_data[shred[3]][1].append(total) #CURRENT TOTAL
                 rcv_data[shred[3]][2].append(shred[1]) #RECEIVE METHOD (REPAIR/TURBINE)
+                #Storing shred to rcv_data for further duplicate processing
 
         for shred in rcv_data.keys():
             if len(rcv_data[shred][1]) > 1:
                 duplicate[("|".join([str(shred),str([rcv_data[shred][2]])[3]]))] = [rcv_data[shred][0], rcv_data[shred][1]]
 
-    return res, duplicate
+    return shreds, duplicate
 
 #Depricated, don't delete
 def data_process(data, data_type):
@@ -126,6 +126,7 @@ def plot_shreds(ax, shreds_dict, duplicate, ready_indicators):
 
     shred_done = ax.scatter(ready_indicators.keys(), ready_indicators.values(), color='green', alpha=1, s=80, marker='X', label = "Shred-is-done mark")
     handles_list = [shred_done]
+    print("DUPLICATE",duplicate)
     if duplicate:
         for i, (name,(timestamps, totals)) in enumerate(duplicate.items()):
             duplicates = ax.scatter(timestamps, totals, color='red', alpha=1, s=35, label = "Duplicate")
@@ -172,8 +173,9 @@ def main():
     #stamps = (data["time_stamp"].unique())
     #print(f"STAMPS:{stamps}")
     block_cursor = Cursor(sorted(pd.unique(data["slot ID"])))
-    print("SLOT ID's",pd.unique(data["slot ID"]))
-    shreds_set, duplicate = extract_block(data, block_cursor.current())
+    print("SLOT ID's\n",pd.unique(data["slot ID"]))
+    block_frame = data.loc[data["slot ID"] == block_cursor.current()]
+    shreds_set, duplicate = extract_block(data, block_frame)
     done_batches = when_batch_done(data, block_cursor.current())
     ready_indicators = ready_indicator(done_batches, shreds_set)
     plot_shreds(axes, shreds_set, duplicate, ready_indicators)
@@ -185,7 +187,8 @@ def main():
         elif event.key == "escape":
             exit()
 
-        shreds_set, duplicate = extract_block(data, block_cursor.current())
+        block_frame = data.loc[data["slot ID"] == block_cursor.current()]
+        shreds_set, duplicate = extract_block(data, block_frame)
         done_batches = when_batch_done(data, block_cursor.current())
         ready_indicators = ready_indicator(done_batches, shreds_set)
         plot_shreds(axes, shreds_set, duplicate, ready_indicators)
