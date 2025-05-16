@@ -2,19 +2,24 @@ import pandas as pd
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import argparse
-import math
+
+from twisted.mail.alias import handle
 
 
+#Parsing data, returns Pandas DataFrame
 def parse_data(file_name:str, time_sample:int, start:int, end:int):
     columns = ["type", "slot ID", "Shred ID", "FEC ID", "FEC data shreds", "FEC set size", "time_stamp"]
     start = max(start, 1) # skip header
     data = pd.read_csv(file_name, skiprows=range(0, start), sep=":", names=columns,
-                        dtype={"type": str, "slot ID": int, "Shred ID": int, "FEC ID":int, "FEC data shreds":int, "FEC set size":int, "time_stamp": str}, nrows=end - start)
+                        dtype={"type": str, "slot ID": int, "Shred ID": int, "FEC ID":int, "FEC data shreds":int, "FEC set size":int, "time_stamp": int}, nrows=end - start)
     data["time_stamp"] = pd.to_numeric(data["time_stamp"], errors="coerce")
     data["time_stamp"] = pd.to_datetime(data["time_stamp"], unit="us", utc=True, errors="coerce")
     data["time_stamp"] = data["time_stamp"].dt.round(f"{time_sample}us")
     return data
 
+#Searches when batches for code block were ready to assemble
+#Batch done when amount of unique shreds for one FEC Set  >= FEC ID Size/2
+#Returns dict {FEC_SET_ID:TIME_STAMP}
 def when_batch_done(data, block_idx:int):
     block_df = data.query(f"`slot ID` == {str(block_idx)}")
     dct = {}
@@ -35,7 +40,7 @@ def when_batch_done(data, block_idx:int):
 
             required_shred_id = round(batch_sizes[id]/2)
             time_stamps = list(first_shreds.values())
-            endline = f"#ASSEMBLED SHRED#\n" if len(time_stamps) >= required_shred_id else "\n"
+            endline = f"#FEC SET COMPLETE#\n" if len(time_stamps) >= required_shred_id else "\n"
             print(f"Batch ID:{id:<4}    Batch size:{batch_sizes[id]:<4}   Required shred amount:{required_shred_id:<4}   Unique shreds received:{(len(time_stamps)):<3}   Total shreds received:{len(uni):<5}", end=endline)
             if len(time_stamps) >= required_shred_id:
                 dct[id] = time_stamps[required_shred_id]
@@ -44,13 +49,18 @@ def when_batch_done(data, block_idx:int):
     finally:
         return dct
 
+#Transforms dict {FEC_SET_ID:TIME_STAMP} into dict format for plotting
+#Return dict {TIME_STAMP:TOTAL} as {X:Y} for plotting
 def ready_indicator(dct, shreds_set):
     indicators = {}
     for id, time_stamp in dct.items():
         indicators[time_stamp] = shreds_set[id][time_stamp]
     return indicators
 
-
+#Receives a Pandas DataFrame from function parse_data
+#Get a specific block by block's ID
+#Return dict duplicates {DUPLICATE_ID:[TIME_STAMPS][TOTALS]}
+#Return dict res {{FEC_SET_ID:{TIME_STAMP:TOTAL}}
 def extract_block(data, block_idx:int):
     res = {}
     duplicate = {}
@@ -62,11 +72,13 @@ def extract_block(data, block_idx:int):
         res[id] = {}
         filtered = block_df.loc[block_df["FEC ID"] == id]
         total = 0
+
         for t in filtered["time_stamp"].unique():
             duplicates = 0
             for shred in filtered.loc[block_df["time_stamp"] == t].itertuples():
                 if shred[3] in rcv_data.keys():
                     duplicates += 1
+                #
 
             total += (len(filtered.loc[block_df["time_stamp"] == t]) - duplicates)
             res[id][t] = total
@@ -84,7 +96,7 @@ def extract_block(data, block_idx:int):
 
     return res, duplicate
 
-
+#Depricated, don't delete
 def data_process(data, data_type):
     res = {}
     for block in data["slot number"].unique():
@@ -97,6 +109,7 @@ def data_process(data, data_type):
             res[name][t] = total
     return res
 
+#Plots graphs
 def plot_shreds(ax, shreds_dict, duplicate, ready_indicators):
     ax.clear()
     colors = mpl.color_sequences['Set1']
@@ -111,12 +124,13 @@ def plot_shreds(ax, shreds_dict, duplicate, ready_indicators):
             rotation=90, xytext=(times[-1], counts[-1]+5),
                     arrowprops=dict(facecolor='white', headwidth=2, headlength=3, width=1),)
 
-    for i, (name,(timestamps, totals)) in enumerate(duplicate.items()):
-        duplicates = ax.scatter(timestamps, totals, color='red', alpha=1, s=35, label = "Duplicate")
-
-
-
     shred_done = ax.scatter(ready_indicators.keys(), ready_indicators.values(), color='green', alpha=1, s=80, marker='X', label = "Shred-is-done mark")
+    handles_list = [shred_done]
+    if duplicate:
+        for i, (name,(timestamps, totals)) in enumerate(duplicate.items()):
+            duplicates = ax.scatter(timestamps, totals, color='red', alpha=1, s=35, label = "Duplicate")
+        handles_list.append(duplicates)
+
 
     ax.set_xlabel("Timestamp", fontsize=12, color="white")
     ax.set_ylabel("Count", fontsize=12, color="white")
@@ -124,9 +138,9 @@ def plot_shreds(ax, shreds_dict, duplicate, ready_indicators):
     ax.tick_params(axis="x",rotation=45, color="white")
     ax.tick_params(axis="y", color="white")
     ax.grid(color="gray", linestyle="--", linewidth=0.5, alpha=0.5)
-    ax.legend(handles=[shred_done,duplicates])
+    ax.legend(handles=handles_list)
 
-
+#Tool for changing a block on press
 class Cursor:
     def __init__(self, data):
         self.data=data
@@ -150,15 +164,13 @@ def main():
     parser.add_argument("path", help = "data file path", type=str)
     parser.add_argument("end_line", help = "last line that script reads", type=int)
     parser.add_argument("--start_line", help = "first line that script reads", type=int, default=0)
-    parser.add_argument("--time_sample", help = "time sample in microseconds", type=int, default = int(1000))
+    parser.add_argument("--time_sample", help = "time sample in microseconds", type=int, default = int(1))
     args = parser.parse_args()
     data = parse_data(args.path, args.time_sample, args.start_line, args.end_line)
     plt.style.use("dark_background")
     fig, axes = plt.subplots(figsize=(12,6))
-
     #stamps = (data["time_stamp"].unique())
     #print(f"STAMPS:{stamps}")
-
     block_cursor = Cursor(sorted(pd.unique(data["slot ID"])))
     print("SLOT ID's",pd.unique(data["slot ID"]))
     shreds_set, duplicate = extract_block(data, block_cursor.current())
