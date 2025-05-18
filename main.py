@@ -1,9 +1,10 @@
+from http.client import error
+
 import pandas as pd
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import argparse
 
-from twisted.mail.alias import handle
 
 
 #Parsing data, returns Pandas DataFrame
@@ -20,34 +21,33 @@ def parse_data(file_name:str, time_sample:int, start:int, end:int):
 #Searches when batches for code block were ready to assemble
 #Batch done when amount of unique shreds for one FEC Set  >= FEC ID Size/2
 #Returns dict {FEC_SET_ID:TIME_STAMP}
-def when_batch_done(data, block_idx:int):
-    block_df = data.query(f"`slot ID` == {str(block_idx)}")
-    dct = {}
+def when_batch_done(block_df):
+    done_stamps = {}
     try:
         batch_sizes = {}
-        for tpl in block_df.query("`FEC data shreds` != 0").itertuples():
-            batch_sizes[tpl[4]] = tpl[6]
+        for shred in block_df.query("`FEC data shreds` != 0").itertuples():
+            batch_sizes[shred[4]] = shred[6]
 
         for id in batch_sizes.keys():
-            first_shreds = {}
-            uni = []
+            first_shreds = {} #Storage for first shreds with same ID inside of batch
+            total_shreds_received = 0
 
             for shred in block_df[block_df["FEC ID"] == id].itertuples():
                 shred_id = shred[3]
-                uni.append(shred_id)
+                total_shreds_received += 1
                 if shred_id not in first_shreds.keys():
                     first_shreds[shred_id] = shred[7]
 
             required_shred_id = round(batch_sizes[id]/2)
             time_stamps = list(first_shreds.values())
             endline = f"#FEC SET COMPLETE#\n" if len(time_stamps) >= required_shred_id else "\n"
-            print(f"Batch ID:{id:<4}    Batch size:{batch_sizes[id]:<4}   Required shred amount:{required_shred_id:<4}   Unique shreds received:{(len(time_stamps)):<3}   Total shreds received:{len(uni):<5}", end=endline)
+            print(f"Batch ID:{id:<4}    Batch size:{batch_sizes[id]:<4}   Required shred amount:{required_shred_id:<4}   Unique shreds received:{(len(time_stamps)):<3}   Total shreds received:{total_shreds_received:<5}", end=endline)
             if len(time_stamps) >= required_shred_id:
-                dct[id] = time_stamps[required_shred_id]
+                done_stamps[id] = time_stamps[required_shred_id]
     except:
-        print("Some error happened...")
+        print("Some error happened...", error)
     finally:
-        return dct
+        return done_stamps
 
 #Transforms dict {FEC_SET_ID:TIME_STAMP} into dict format for plotting
 #Return dict {TIME_STAMP:TOTAL} as {X:Y} for plotting
@@ -172,13 +172,13 @@ def main():
     #stamps = (data["time_stamp"].unique())
     #print(f"STAMPS:{stamps}")
     block_cursor = Cursor(sorted(pd.unique(data["slot ID"])))
-    print("SLOT ID's:\n",pd.unique(data["slot ID"]))
+    print("SLOT ID's:\n",sorted(pd.unique(data["slot ID"])))
     block_print = f"▬▬ι═══════{block_cursor.current()}-═══════ι▬▬"
     print(block_print)
 
     block_frame = data.loc[data["slot ID"] == block_cursor.current()]
     shreds_set, duplicate = extract_block(data, block_frame)
-    done_batches = when_batch_done(data, block_cursor.current())
+    done_batches = when_batch_done(block_frame)
     print(block_print)
     ready_indicators = ready_indicator(done_batches, shreds_set)
     plot_shreds(axes, shreds_set, duplicate, ready_indicators)
@@ -191,9 +191,10 @@ def main():
             exit()
 
         block_frame = data.loc[data["slot ID"] == block_cursor.current()]
+        block_print = f"▬▬ι═══════{block_cursor.current()}-═══════ι▬▬"
         print(block_print)
         shreds_set, duplicate = extract_block(data, block_frame)
-        done_batches = when_batch_done(data, block_cursor.current())
+        done_batches = when_batch_done(block_frame)
         print(block_print)
         ready_indicators = ready_indicator(done_batches, shreds_set)
         plot_shreds(axes, shreds_set, duplicate, ready_indicators)
