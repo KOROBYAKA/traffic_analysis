@@ -93,6 +93,7 @@ def extract_block(data, block_df):
         for shred in rcv_data.keys():
             if len(rcv_data[shred][1]) > 1:
                 duplicate[("|".join([str(shred),str([rcv_data[shred][2]])[3]]))] = [rcv_data[shred][0], rcv_data[shred][1]]
+                #Creating a structure for duplicates
 
     return shreds, duplicate
 
@@ -120,18 +121,16 @@ def plot_shreds(ax, shreds_dict, duplicate, ready_indicators):
         counts = [time_data[t] for t in times]  # Get corresponding amounts
         ax.plot(times, counts, color=colors[i % len(colors)], alpha=1, linewidth=2)
         max_y = max(max_y, max(counts))
-        shred = ax.annotate(f'{fec_set_num}', xy=(times[-1], counts[-1]),
-            rotation=90, xytext=(times[-1], counts[-1]+5),
-                    arrowprops=dict(facecolor='white', headwidth=2, headlength=3, width=1),)
+        shred = ax.annotate(f'{fec_set_num}', xy=(times[-1], counts[-1]), rotation=90, xytext=(times[-1], counts[-1]+5),
+            arrowprops=dict(facecolor='white', headwidth=2, headlength=3, width=1),)
 
-    shred_done = ax.scatter(ready_indicators.keys(), ready_indicators.values(), color='green', alpha=1, s=80, marker='X', label = "Shred-is-done mark")
+    shred_done = ax.scatter(ready_indicators.keys(), ready_indicators.values(), color='green', alpha=1, s=80, marker='X', label = "Batch-is-done mark")
     handles_list = [shred_done]
-    print("DUPLICATE",duplicate)
+
     if duplicate:
         for i, (name,(timestamps, totals)) in enumerate(duplicate.items()):
             duplicates = ax.scatter(timestamps, totals, color='red', alpha=1, s=35, label = "Duplicate")
         handles_list.append(duplicates)
-
 
     ax.set_xlabel("Timestamp", fontsize=12, color="white")
     ax.set_ylabel("Count", fontsize=12, color="white")
@@ -173,10 +172,14 @@ def main():
     #stamps = (data["time_stamp"].unique())
     #print(f"STAMPS:{stamps}")
     block_cursor = Cursor(sorted(pd.unique(data["slot ID"])))
-    print("SLOT ID's\n",pd.unique(data["slot ID"]))
+    print("SLOT ID's:\n",pd.unique(data["slot ID"]))
+    block_print = f"▬▬ι═══════{block_cursor.current()}-═══════ι▬▬"
+    print(block_print)
+
     block_frame = data.loc[data["slot ID"] == block_cursor.current()]
     shreds_set, duplicate = extract_block(data, block_frame)
     done_batches = when_batch_done(data, block_cursor.current())
+    print(block_print)
     ready_indicators = ready_indicator(done_batches, shreds_set)
     plot_shreds(axes, shreds_set, duplicate, ready_indicators)
     def on_press(event):
@@ -188,8 +191,10 @@ def main():
             exit()
 
         block_frame = data.loc[data["slot ID"] == block_cursor.current()]
+        print(block_print)
         shreds_set, duplicate = extract_block(data, block_frame)
         done_batches = when_batch_done(data, block_cursor.current())
+        print(block_print)
         ready_indicators = ready_indicator(done_batches, shreds_set)
         plot_shreds(axes, shreds_set, duplicate, ready_indicators)
         fig.suptitle(f"Block number {block_cursor.current()}")
