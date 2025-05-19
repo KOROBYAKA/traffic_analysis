@@ -15,7 +15,7 @@ def parse_data(file_name:str, time_sample:int, start:int, end:int):
                         dtype={"type": str, "slot ID": int, "Shred ID": int, "FEC ID":int, "FEC data shreds":int, "FEC set size":int, "time_stamp": int}, nrows=end - start)
     data["time_stamp"] = pd.to_numeric(data["time_stamp"], errors="coerce")
     data["time_stamp"] = pd.to_datetime(data["time_stamp"], unit="us", utc=True, errors="coerce")
-    data["time_stamp"] = data["time_stamp"].dt.round(f"{time_sample}us")
+    #data["time_stamp"] = data["time_stamp"].dt.round(f"{time_sample}us")
     return data
 
 #Searches when batches for code block were ready to assemble
@@ -23,6 +23,7 @@ def parse_data(file_name:str, time_sample:int, start:int, end:int):
 #Returns dict {FEC_SET_ID:TIME_STAMP}
 def when_batch_done(block_df):
     done_stamps = {}
+    block_total_shreds = block_unique_shreds = block_batches = 0
     try:
         batch_sizes = {}
         for shred in block_df.query("`FEC data shreds` != 0").itertuples():
@@ -115,26 +116,37 @@ def plot_shreds(ax, shreds_dict, duplicate, ready_indicators):
     ax.clear()
     colors = mpl.color_sequences['Set1']
     max_y = 0
-
+    zero_time = next(iter(next(iter(shreds_dict.values())))) #Get a time_stamp of the first received shred in the batch
     for i, (fec_set_num, time_data) in enumerate(shreds_dict.items()):
-        times = sorted(time_data.keys())  # Get timestamps in order
+        time_plot = []
+        times = sorted(time_data.keys())
+        for time in sorted(time_data.keys()):# Get timestamps in order
+            delta = (time - zero_time).total_seconds() * 1000
+            time_plot.append(delta)
         counts = [time_data[t] for t in times]  # Get corresponding amounts
-        ax.plot(times, counts, color=colors[i % len(colors)], alpha=1, linewidth=2)
+        ax.plot(time_plot, counts, color=colors[i % len(colors)], alpha=1, linewidth=2)
         max_y = max(max_y, max(counts))
-        shred = ax.annotate(f'{fec_set_num}', xy=(times[-1], counts[-1]), rotation=90, xytext=(times[-1], counts[-1]+5),
+        shred = ax.annotate(f'{fec_set_num}', xy=(time_plot[-1], counts[-1]), rotation=90, xytext=(time_plot[-1], counts[-1]+5),
             arrowprops=dict(facecolor='white', headwidth=2, headlength=3, width=1),)
 
-    shred_done = ax.scatter(ready_indicators.keys(), ready_indicators.values(), color='green', alpha=1, s=80, marker='X', label = "Batch-is-done mark")
+    shred_done_times = []
+    for key,value in ready_indicators.items():
+        shred_done_times.append((key - zero_time).total_seconds() * 1000)
+
+    shred_done = ax.scatter(shred_done_times, ready_indicators.values(), color='green', alpha=1, s=80, marker='X', label = "Batch-is-done mark")
+
     handles_list = [shred_done]
 
     if duplicate:
         for i, (name,(timestamps, totals)) in enumerate(duplicate.items()):
+            for i in range(len(timestamps)):
+                timestamps[i] = (timestamps[i] - zero_time).total_seconds() * 1000
             duplicates = ax.scatter(timestamps, totals, color='red', alpha=1, s=35, label = "Duplicate")
         handles_list.append(duplicates)
 
     ax.set_xlabel("Timestamp", fontsize=12, color="white")
     ax.set_ylabel("Count", fontsize=12, color="white")
-    ax.set_ylim([0,max_y + 10])
+    ax.set_ylim([0,max_y + 5])
     ax.tick_params(axis="x",rotation=45, color="white")
     ax.tick_params(axis="y", color="white")
     ax.grid(color="gray", linestyle="--", linewidth=0.5, alpha=0.5)
@@ -172,7 +184,7 @@ def main():
     #stamps = (data["time_stamp"].unique())
     #print(f"STAMPS:{stamps}")
     block_cursor = Cursor(sorted(pd.unique(data["slot ID"])))
-    print("SLOT ID's:\n",sorted(pd.unique(data["slot ID"])))
+    print("SLOT ID's",pd.unique(data["slot ID"]))
     block_print = f"▬▬ι═══════{block_cursor.current()}-═══════ι▬▬"
     print(block_print)
 
