@@ -23,17 +23,19 @@ def parse_data(file_name:str, time_sample:int, start:int, end:int):
 #Returns dict {FEC_SET_ID:TIME_STAMP}
 def when_batch_done(block_df):
     done_stamps = {}
+    block_times = []
     block_total_shreds = block_unique_shreds = block_batches = 0
     try:
         batch_sizes = {}
+        repairs = block_df.loc[block_df["type"] == "REPAIR"].count()
         for shred in block_df.query("`FEC data shreds` != 0").itertuples():
             batch_sizes[shred[4]] = shred[6]
 
-        for id in batch_sizes.keys():
+        for id in batch_sizes.keys(): #Processing a batch
             first_shreds = {} #Storage for first shreds with same ID inside of batch
             total_shreds_received = 0
 
-            for shred in block_df[block_df["FEC ID"] == id].itertuples():
+            for shred in block_df[block_df["FEC ID"] == id].itertuples(): #Traversing a batch
                 shred_id = shred[3]
                 total_shreds_received += 1
                 if shred_id not in first_shreds.keys():
@@ -41,12 +43,21 @@ def when_batch_done(block_df):
 
             required_shred_id = round(batch_sizes[id]/2)
             time_stamps = list(first_shreds.values())
-            endline = f"#FEC SET COMPLETE#\n" if len(time_stamps) >= required_shred_id else "\n"
-            print(f"Batch ID:{id:<4}    Batch size:{batch_sizes[id]:<4}   Required shred amount:{required_shred_id:<4}   Unique shreds received:{(len(time_stamps)):<3}   Total shreds received:{total_shreds_received:<5}", end=endline)
+            block_total_shreds += total_shreds_received
+            block_unique_shreds += (len(time_stamps))
+            block_batches += 1
+            first_batch = block_df[block_df["FEC ID"] == id].iloc[0]["time_stamp"]
+            last_batch = block_df[block_df["FEC ID"] == id].iloc[-1]["time_stamp"]
+            block_times.append((last_batch - first_batch).total_seconds() * 1000)
             if len(time_stamps) >= required_shred_id:
                 done_stamps[id] = time_stamps[required_shred_id]
+        print(f"Block Time Statistics:\n-Batch average time:{(sum(block_times)/len(block_times)):.3f}\n-Longest batch time:"
+              f"{max(block_times):.3f}\n-Smallest batch time:{min(block_times):.3f}\n")
+        print(f"Block Data Statistics:\n-Batch amount at block:{block_batches}\n-Total amount of shreds received:"
+              f"{block_total_shreds}\n-Unique shreds received:{block_unique_shreds}\n-Duplicated shreds received:"
+              f"{(block_total_shreds-block_unique_shreds)}\n-Total amount of repair shreds at block:{repairs['time_stamp']}")
     except:
-        print("Some error happened...", error)
+        print("Some error happened...")
     finally:
         return done_stamps
 
