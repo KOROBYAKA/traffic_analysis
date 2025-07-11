@@ -221,9 +221,6 @@ def main():
     current_filter = {"type": "ALL"}
     parser = argparse.ArgumentParser()
     parser.add_argument("path", help = "data file path", type=str)
-    parser.add_argument("end_line", help = "last line that script reads", type=int)
-    parser.add_argument("--start_line", help = "first line that script reads", type=int, default=0)
-    parser.add_argument("--time_sample", help = "time sample in microseconds", type=int, default = int(1))
     args = parser.parse_args()
 
     file_path = args.path
@@ -264,6 +261,7 @@ def main():
         
         plot_shreds(ax, shreds, duplicates, ready_indicators)
         fig.suptitle(f"Block number {cursor.current()} - Showing {current_filter['type']} shreds", fontsize=14, color="white")
+        fig.tight_layout()
         fig.canvas.draw()
         
     def toggle_legend(event):
