@@ -199,8 +199,6 @@ def plot_shreds(df, ax, shreds_dict, duplicate, ready_indicators, show_repair=Tr
             dup_y.extend(totals)
         ax.scatter(dup_x, dup_y, color='red', alpha=0.9, s=10, label="Duplicates")
         
-    
-
     # some labels
     ax.set_xlabel("Time since first shred (ms)", fontsize=12, color="white")
     ax.set_ylabel("Shred count", fontsize=12, color="white")
@@ -208,8 +206,7 @@ def plot_shreds(df, ax, shreds_dict, duplicate, ready_indicators, show_repair=Tr
     ax.tick_params(axis="x", rotation=45, color="white")
     ax.tick_params(axis="y", color="white")
     ax.grid(color="gray", linestyle="--", linewidth=0.5, alpha=0.5)
-    ax.legend(fontsize=8)
-
+    ax.legend(fontsize=8, loc='upper left', bbox_to_anchor=(1,1), borderaxespad=0.)
 
 # cursor class for navigation thorugh blocks
 class Cursor:
@@ -246,19 +243,17 @@ def main():
     plt.style.use("dark_background")
     fig, ax = plt.subplots(figsize=(12, 6))
     
-    check_ax = plt.axes([0.01, 0.01, 0.2, 0.15])
+    check_ax = plt.axes([0.01, 0.8, 0.08, 0.1])
     visibility_options = {
         "Repair": True,
         "Duplicate": True
     }
     
-    check = CheckButtons(check_ax, list(visibility_options.keys()), list(visibility_options.values()))
-    for label in check.labels:
-        label.set_color("white")
-    
-    button_ax = plt.axes([0.8, 0.01, 0.1, 0.05])
-    legend_button = Button(button_ax, "Legend", color='black', hovercolor='black')
-
+    check = CheckButtons(check_ax, 
+                         list(visibility_options.keys()), 
+                         list(visibility_options.values()), 
+                         check_props={"color": "white"}, 
+                         frame_props={"edgecolor": "white"})
     
     def render():
         slot_id = cursor.current()
@@ -281,22 +276,7 @@ def main():
                     show_duplicate=visibility_options["Duplicate"])
         
         fig.suptitle(f"Block number {cursor.current()} - Showing {current_filter['type']} shreds", fontsize=14, color="white")
-        # fig.tight_layout()
         fig.canvas.draw()
-        
-    def toggle_legend(event):
-        legend = ax.get_legend()
-        if legend is not None:
-            legend.set_visible(not legend.get_visible())
-            fig.canvas.draw()
-    
-    def show_shred(event):
-        current_filter["type"] = "SHRED"
-        render()
-
-    def show_repair(event):
-        current_filter["type"] = "REPAIR"
-        render()
         
     def check_toggle(label):
         visibility_options[label] = not visibility_options[label]
@@ -311,7 +291,6 @@ def main():
             exit()
         render()
 
-    legend_button.on_clicked(toggle_legend)
     check.on_clicked(check_toggle)
 
     fig.canvas.mpl_connect('key_press_event', on_press)
