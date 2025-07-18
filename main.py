@@ -5,6 +5,7 @@ import argparse
 import io
 from matplotlib.widgets import Button
 from collections import defaultdict
+from matplotlib.widgets import CheckButtons
 
 def index_slots_by_byte_ranges(file_path):
     slot_map = {}
@@ -155,7 +156,7 @@ def extract_block(block_df):
 
     return dict(shreds), duplicate
 
-def plot_shreds(ax, shreds_dict, duplicate, ready_indicators):
+def plot_shreds(df, ax, shreds_dict, duplicate, ready_indicators, show_repair=True, show_duplicate=True):
     ax.clear()
     colors = mpl.color_sequences['Set1']
     max_y = 0
@@ -180,13 +181,25 @@ def plot_shreds(ax, shreds_dict, duplicate, ready_indicators):
         done_counts = list(ready_indicators.values())
         shred_done = ax.scatter(done_times, done_counts, color='green', alpha=1, s=80, marker='X', label="Batch Done")
 
+    # plot repair shreds
+    if show_repair:
+        repair_df = df[df["type"] == "REPAIR"]
+        for i, (_, row) in enumerate(repair_df.iterrows()):
+            t = row["time_stamp"]
+            t_ms = (t - zero_time).total_seconds() * 1000
+            y = shreds_dict.get(row["FEC ID"], {}).get(t, None)
+            if y is not None:
+                label = "Repair Shred" if i == 0 else "_nolegend_"
+                ax.scatter(t_ms, y, marker='o', color='orange', s=20, label=label)
     # plot duplicates
-    if duplicate:
+    if show_duplicate and duplicate:
         dup_x, dup_y = [], []
         for timestamps, totals in duplicate.values():
             dup_x.extend([(t - zero_time).total_seconds() * 1000 for t in timestamps])
             dup_y.extend(totals)
         ax.scatter(dup_x, dup_y, color='red', alpha=0.9, s=10, label="Duplicates")
+        
+    
 
     # some labels
     ax.set_xlabel("Time since first shred (ms)", fontsize=12, color="white")
@@ -233,14 +246,18 @@ def main():
     plt.style.use("dark_background")
     fig, ax = plt.subplots(figsize=(12, 6))
     
+    check_ax = plt.axes([0.01, 0.01, 0.2, 0.15])
+    visibility_options = {
+        "Repair": True,
+        "Duplicate": True
+    }
+    
+    check = CheckButtons(check_ax, list(visibility_options.keys()), list(visibility_options.values()))
+    for label in check.labels:
+        label.set_color("white")
+    
     button_ax = plt.axes([0.8, 0.01, 0.1, 0.05])
     legend_button = Button(button_ax, "Legend", color='black', hovercolor='black')
-    
-    shred_ax = plt.axes([0.65, 0.01, 0.1, 0.05])
-    repair_ax = plt.axes([0.5, 0.01, 0.1, 0.05])
-
-    shred_button = Button(shred_ax, "Show SHRED", color='black', hovercolor='black')
-    repair_button = Button(repair_ax, "Show REPAIR", color='black', hovercolor='black')
 
     
     def render():
@@ -259,9 +276,12 @@ def main():
         done_batches = when_batch_done(df)
         ready_indicators = ready_indicator(done_batches, shreds)
         
-        plot_shreds(ax, shreds, duplicates, ready_indicators)
+        plot_shreds(df, ax, shreds, duplicates, ready_indicators,
+                    show_repair=visibility_options["Repair"],
+                    show_duplicate=visibility_options["Duplicate"])
+        
         fig.suptitle(f"Block number {cursor.current()} - Showing {current_filter['type']} shreds", fontsize=14, color="white")
-        fig.tight_layout()
+        # fig.tight_layout()
         fig.canvas.draw()
         
     def toggle_legend(event):
@@ -277,7 +297,10 @@ def main():
     def show_repair(event):
         current_filter["type"] = "REPAIR"
         render()
-
+        
+    def check_toggle(label):
+        visibility_options[label] = not visibility_options[label]
+        render()
 
     def on_press(event):
         if event.key == 'right':
@@ -289,8 +312,7 @@ def main():
         render()
 
     legend_button.on_clicked(toggle_legend)
-    shred_button.on_clicked(show_shred)
-    repair_button.on_clicked(show_repair)
+    check.on_clicked(check_toggle)
 
     fig.canvas.mpl_connect('key_press_event', on_press)
     render()
